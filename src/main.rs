@@ -65,14 +65,16 @@ pub async fn consume_task(Form(submit_message): Form<SubmitMessage>) -> (StatusC
 
                         (
                             StatusCode::OK,
-                            Json(json!({"Output": execute_output.stdout})),
+                            Json(
+                                json!({"Output": String::from_utf8_lossy(&execute_output.stdout).to_string()}),
+                            ),
                         )
                     }
                     Ok(execute_output) => match execute_output.status.code() {
                         Some(status) => (
                             StatusCode::INTERNAL_SERVER_ERROR,
                             Json(
-                                json!({"Error": format!("Got error {:?} with {:?} when execute compiled file", compile_output.stderr, status)}),
+                                json!({"Error": format!("Got error {:?} with {:?} when execute compiled file", String::from_utf8_lossy(&compile_output.stderr), status)}),
                             ),
                         ),
                         None => (
@@ -92,7 +94,7 @@ pub async fn consume_task(Form(submit_message): Form<SubmitMessage>) -> (StatusC
                 Some(status) => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(
-                        json!({"Error": format!("Got error {:?} with status {:?} when compiled source file", compile_output.stderr, status)}),
+                        json!({"Error": format!("Got error {:?} with status {:?} when compiled source file", String::from_utf8_lossy(&compile_output.stderr), status)}),
                     ),
                 ),
                 None => (
