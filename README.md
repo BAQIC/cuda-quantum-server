@@ -1,7 +1,6 @@
 # cuda-quantum-server
 
 ## How to run
-## How to run
 We provide a Dockerfile to run the server. To build the image, please use the following command:
 ```bash
 docker build -t nvidia/cuda-quantum-rust:latest -f Dockerfile .
