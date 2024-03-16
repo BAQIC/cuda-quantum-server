@@ -1,7 +1,17 @@
 [package]
-name = "cuda-quantum-server"
+name = "cudaq-agent"
 version = "0.1.0"
 edition = "2021"
+
+[profile.release]
+lto = true
+opt-level = "z"
+strip = "symbols"
+codegen-units = 1
+
+[profile.dev]
+lto = true
+opt-level = 3
 
 [dependencies]
 uuid = {version = "1.7.0", features = ["v4"]}
