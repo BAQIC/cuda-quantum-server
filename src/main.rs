@@ -1,5 +1,5 @@
 use axum::{
-    extract::Request,
+    extract::{Request, State},
     http::{header, StatusCode},
     routing, Form, Json, RequestExt, Router,
 };
@@ -17,12 +17,17 @@ pub struct SubmitMessage {
     pub code: String,
 }
 
-async fn compile(source: &str, target: &str) -> io::Result<Output> {
+#[derive(Clone)]
+pub struct ServerState {
+    pub agent_addr: String,
+}
+
+async fn compile(state: State<ServerState>, source: &str, target: &str) -> io::Result<Output> {
     Command::new("nvq++")
         .arg("--target")
         .arg("emulate")
         .arg("--emulate-url")
-        .arg("http://127.0.0.1:3000")
+        .arg(state.agent_addr.clone())
         .arg("--disable-qubit-mapping")
         .arg("-o")
         .arg(target)
@@ -46,13 +51,16 @@ async fn remove_source_target_files(source: &str, target: &str) -> io::Result<()
     Ok(())
 }
 
-pub async fn consume_task(Form(submit_message): Form<SubmitMessage>) -> (StatusCode, Json<Value>) {
+pub async fn consume_task(
+    state: State<ServerState>,
+    Form(submit_message): Form<SubmitMessage>,
+) -> (StatusCode, Json<Value>) {
     let name = Uuid::new_v4().to_string();
     let source = "/tmp/".to_string() + &name + ".cpp";
     let target = "/tmp/".to_string() + &name + ".x";
 
     match save_source_file(&submit_message.code, &source).await {
-        Ok(_) => match compile(&source, &target).await {
+        Ok(_) => match compile(state, &source, &target).await {
             Ok(compile_output) if compile_output.status.code() == Some(0) => {
                 match run_compiled_file(&target).await {
                     Ok(execute_output) if execute_output.status.code() == Some(0) => {
@@ -73,9 +81,10 @@ pub async fn consume_task(Form(submit_message): Form<SubmitMessage>) -> (StatusC
                     Ok(execute_output) => match execute_output.status.code() {
                         Some(status) => (
                             StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(
-                                json!({"Error": format!("Got error {:?} with {:?} when execute compiled file", String::from_utf8_lossy(&compile_output.stderr), status)}),
-                            ),
+                            Json(json!({
+                                "Error": format!("Got error {:?} with {:?} when execute compiled file",
+                                String::from_utf8_lossy(&compile_output.stderr), status)
+                            })),
                         ),
                         None => (
                             StatusCode::INTERNAL_SERVER_ERROR,
@@ -93,9 +102,10 @@ pub async fn consume_task(Form(submit_message): Form<SubmitMessage>) -> (StatusC
             Ok(compile_output) => match compile_output.status.code() {
                 Some(status) => (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(
-                        json!({"Error": format!("Got error {:?} with status {:?} when compiled source file", String::from_utf8_lossy(&compile_output.stderr), status)}),
-                    ),
+                    Json(json!({
+                        "Error": format!("Got error {:?} with status {:?} when compiled source file",
+                        String::from_utf8_lossy(&compile_output.stderr), status)
+                    })),
                 ),
                 None => (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -114,12 +124,12 @@ pub async fn consume_task(Form(submit_message): Form<SubmitMessage>) -> (StatusC
     }
 }
 
-pub async fn submit(request: Request) -> (StatusCode, Json<Value>) {
+pub async fn submit(state: State<ServerState>, request: Request) -> (StatusCode, Json<Value>) {
     match request.headers().get(header::CONTENT_TYPE) {
         Some(content_type) => match content_type.to_str().unwrap() {
             "application/x-www-form-urlencoded" => {
                 let Form(submit_message) = request.extract().await.unwrap();
-                consume_task(Form(submit_message)).await
+                consume_task(state, Form(submit_message)).await
             }
             _ => (
                 StatusCode::BAD_REQUEST,
@@ -135,8 +145,13 @@ pub async fn submit(request: Request) -> (StatusCode, Json<Value>) {
 
 #[tokio::main]
 async fn main() {
-    let cudaq_router = Router::new().route("/submit", routing::post(submit));
+    let agent_addr =
+        std::env::var("EMULATE_ADDR").unwrap_or_else(|_| "http://127.0.0.1:3000".to_owned());
+    let state = ServerState { agent_addr };
+
+    let cudaq_router = Router::new()
+        .route("/submit", routing::post(submit))
+        .with_state(state);
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3001").await.unwrap();
     axum::serve(listener, cudaq_router).await.unwrap();
-    // println!("{}", format!("-o {}.out", Uuid::new_v4()))
 }
