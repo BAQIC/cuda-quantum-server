@@ -5,8 +5,7 @@ ENV CUDAQ_INSTALL_PREFIX=/usr/local/cudaq
 ENV PATH="$CUDAQ_INSTALL_PREFIX/bin:${PATH}"
 ENV PYTHONPATH="$CUDAQ_INSTALL_PREFIX:${PYTHONPATH}"
 ENV PATH="${HOME}/.cargo/bin:${PATH}"
-ENV RUSTUP_DIST_SERVER=https://mirrors.tuna.tsinghua.edu.cn/rustup
-ENV NINJA_THREAD=10
+ENV NINJA_THREAD=4
 
 WORKDIR /workspace
 RUN git clone https://github.com/lucky9-cyou/cuda-quantum.git && cd cuda-quantum && git checkout feat/emulate-server && bash scripts/build_cudaq.sh
